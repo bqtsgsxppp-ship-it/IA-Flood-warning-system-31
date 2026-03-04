@@ -1,0 +1,79 @@
+import numpy as np
+import datetime
+from floodsystem.datafetcher import fetch_measure_levels
+from floodsystem.stationdata import build_station_list, update_water_levels
+from floodsystem.analysis import polyfit 
+
+def increasing_stations(stations, tol):
+    increasing = []
+    for station in stations:
+
+        dates, levels = fetch_measure_levels(station.measure_id, dt=datetime.timedelta(days=2))
+        p = 4 #degree of polynomial fit
+    
+        
+        if dates and levels:
+            # Calculate the polynomial fit
+            poly, d0 = polyfit(dates, levels, p)
+
+            #calculate derivative
+            poly_deriv = np.polyder(poly)
+        else:
+            continue
+    
+        if station.relative_water_level() != None and poly_deriv(d0) > tol:
+            increasing.append(station)
+    return increasing
+
+
+def risk_level(station, sev_tol, high_tol, mod_tol):
+    """returns list of stations at risk of flooding"""
+
+    if station.relative_water_level() == None:
+        return "Unknown"
+    elif station.relative_water_level() < mod_tol:
+        return "Low"
+    elif station.relative_water_level() < high_tol:
+        return "Moderate"
+    elif station.relative_water_level() < sev_tol:
+        return "High"
+    else:
+        return "Severe"
+
+
+def run():
+    stations = build_station_list()
+    update_water_levels(stations)
+
+    severe_risk = []
+    high_risk = []
+    moderate_risk = []
+    low_risk = []
+
+    increasing = increasing_stations(stations, 0.1)
+
+    for station in stations:
+        risk = risk_level(station, 1.5, 1.2, 0.8)
+        if (risk == "Severe" or ((risk == "High" or risk == "Moderate") and station in increasing)) and station.town not in severe_risk:
+            severe_risk.append(station.town)
+        elif (risk == "High" or (risk == "Moderate" and station in increasing)) and station.town not in (severe_risk + high_risk):
+            high_risk.append(station.town)
+        elif risk == "Moderate" and station.town not in (severe_risk + high_risk + moderate_risk):
+            moderate_risk.append(station.town)
+        elif risk == "Low" and station.town not in (severe_risk + high_risk + moderate_risk + low_risk):
+            low_risk.append(station.town)
+
+
+    print("Towns at risk of flooding:")
+    print("Severe Risk:")
+    print(severe_risk)
+    print("High Risk:")
+    print(high_risk)
+    print("Moderate Risk:")
+    print(moderate_risk)
+    print("Low Risk:")
+    print(low_risk)
+
+
+if __name__ == "__main__":
+    run()
